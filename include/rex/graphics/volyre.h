@@ -19,8 +19,9 @@ uint32_t TextureRefreshFrames();  // 0 = never throttle texture re-uploads
 // Current load-shedding level, 0 (full quality) .. volyre_max_level (<= 5).
 uint32_t Level();
 
-// Called once per guest swap (frame boundary).
-void OnFrameSwap();
+// Called once per guest swap (frame boundary). fence_wait_ns = time this frame's command-processor
+// thread spent blocked on GPU fences (used to tell GPU-bound from CPU-bound frames).
+void OnFrameSwap(uint64_t fence_wait_ns);
 
 // Called for each frame the texture cache starts (counts re-uploads that were deferred).
 void NoteTextureRefreshDeferred();

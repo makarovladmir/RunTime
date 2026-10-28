@@ -2289,7 +2289,7 @@ void VulkanCommandProcessor::OnGammaRampPWLValueWritten() {
 void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontbuffer_width,
                                        uint32_t frontbuffer_height) {
   SCOPE_profile_cpu_f("gpu");
-  volyre::OnFrameSwap();
+  volyre::OnFrameSwap(telemetry_current_frame_.fence_wait_ns);
   struct ScopedSwapCpuTimer {
     GpuTelemetryStats& stats;
     std::chrono::steady_clock::time_point start;
