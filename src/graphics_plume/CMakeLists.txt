@@ -7,6 +7,7 @@ set(REXGPU_PLUME_SOURCES
     plugin_main.cpp
     plume_graphics_system.cpp
     plume_command_processor.cpp
+  ../graphics/volyre.cpp
     plume_texture_cache.cpp
     plume_render_target_cache.cpp
     plume_texture_uploader.cpp
@@ -15,6 +16,7 @@ set(REXGPU_PLUME_SOURCES
     ${REXGLUE_ROOT}/src/graphics/pipeline/render_target/cache.cpp
     ${REXGLUE_ROOT}/src/graphics/pipeline/texture/util.cpp
     ${REXGLUE_ROOT}/src/graphics/command_processor.cpp
+  ../graphics/volyre.cpp
     ${REXGLUE_ROOT}/src/graphics/pm4_plume_transpiler.cpp
     ${REXGLUE_ROOT}/src/graphics/graphics_system.cpp
     ${REXGLUE_ROOT}/src/graphics/register_file.cpp
