@@ -9,6 +9,7 @@ set(REXGPU_XENOS_SOURCES
 
     # Core GPU types
     flags.cpp
+    volyre.cpp
     register_file.cpp
     registers.cpp
     pipeline/shader/shader.cpp

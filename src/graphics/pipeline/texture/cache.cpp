@@ -22,6 +22,7 @@
 #include <rex/graphics/pipeline/texture/info.h>
 #include <rex/graphics/pipeline/texture/util.h>
 #include <rex/graphics/register_file.h>
+#include <rex/graphics/volyre.h>
 #include <rex/graphics/xenos.h>
 #include <rex/logging.h>
 #include <rex/math.h>
@@ -324,6 +325,7 @@ void TextureCache::BeginSubmission(uint64_t new_submission_index) {
 }
 
 void TextureCache::BeginFrame() {
+  ++volyre_frame_counter_;
   // In case there was a failure to create something in the previous frame, make
   // sure bindings are reset so a new attempt will surely be made if the texture
   // is requested again.
@@ -401,6 +403,19 @@ bool TextureCache::PrepareTextureLoad(Texture& texture, PendingTextureLoad& pend
     return false;
   }
 
+  // Volyre: a texture that was already uploaded once and was invalidated by a CPU write is refreshed at
+  // most every N frames. Every upload mid-frame ends the current render pass (a full tile flush on
+  // Adreno), and the log showed 50-100 such uploads per frame. GPU-written (resolved) textures are
+  // never throttled. Bindings are reset every frame, so the refresh is retried automatically.
+  if (texture.volyre_loaded_once() && !texture.volyre_gpu_dirty()) {
+    const uint32_t volyre_refresh_frames = volyre::TextureRefreshFrames();
+    if (volyre_refresh_frames &&
+        (volyre_frame_counter_ - texture.volyre_last_load_frame()) < volyre_refresh_frames) {
+      volyre::NoteTextureRefreshDeferred();
+      return false;
+    }
+  }
+
   pending_load_out.texture = &texture;
   pending_load_out.load_base = base_outdated;
   pending_load_out.load_mips = mips_outdated;
@@ -457,6 +472,7 @@ bool TextureCache::CommitPreparedTextureLoad(const PendingTextureLoad& pending_l
   // regular texture or a vertex buffer, and thus the scaled resolve version is
   // not up to date anymore.
   texture.MakeUpToDateAndWatch(global_critical_region_.Acquire());
+  volyre::NoteTextureRefreshDone();
   texture.LogAction("Loaded");
 
   return true;
@@ -715,6 +731,9 @@ void TextureCache::Texture::MakeUpToDateAndWatch(
         key().mip_page << 12, GetGuestMipsSize(), TextureCache::WatchCallback, this, nullptr, 1);
     outdated_mask_.fetch_and(~kOutdatedBitMips, std::memory_order_release);
   }
+  volyre_loaded_once_ = true;
+  volyre_gpu_dirty_ = false;
+  volyre_last_load_frame_ = texture_cache_.volyre_frame_counter_;
 }
 
 void TextureCache::Texture::MarkAsUsed() {
@@ -763,6 +782,9 @@ void TextureCache::WatchCallback(const std::unique_lock<std::recursive_mutex>& g
                                  void* context, void* data, uint64_t argument,
                                  bool invalidated_by_gpu) {
   Texture& texture = *static_cast<Texture*>(context);
+  if (invalidated_by_gpu) {
+    texture.VolyreMarkGpuDirty();
+  }
   texture.WatchCallback(global_lock, argument != 0);
   texture.texture_cache().texture_became_outdated_.store(true, std::memory_order_release);
 }

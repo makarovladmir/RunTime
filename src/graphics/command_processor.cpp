@@ -25,6 +25,7 @@
 #include <rex/graphics/command_processor.h>
 #include <rex/graphics/flags.h>
 #include <rex/graphics/graphics_system.h>
+#include <rex/graphics/volyre.h>
 #include <rex/graphics/pipeline/texture/info.h>
 #include <rex/graphics/sampler_info.h>
 #include <rex/graphics/xenos.h>
@@ -379,6 +380,11 @@ uint32_t CommandProcessor::ReadRegisterValue(uint32_t index) const {
 }
 
 void CommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
+  // Volyre: never let the guest enable MSAA. 2x/4x guest MSAA makes every host render target 2-4x
+  // bigger and is the largest single GPU cost on a tiler. RB_SURFACE_INFO.msaa_samples = bits 16-17.
+  if (index == XE_GPU_REG_RB_SURFACE_INFO && volyre::ForceMsaa1x()) {
+    value &= ~(UINT32_C(3) << 16);
+  }
   pm4_plume_transpiler_.ObserveRegisterWrite(index, value);
   RegisterFile& regs = *register_file_;
   if (index >= RegisterFile::kRegisterCount) {

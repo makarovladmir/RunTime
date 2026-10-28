@@ -228,6 +228,12 @@ class TextureCache {
     }
     void MakeUpToDateAndWatch(const std::unique_lock<std::recursive_mutex>& global_lock);
 
+    // Volyre: re-upload throttling of textures whose guest memory the CPU rewrote.
+    bool volyre_loaded_once() const { return volyre_loaded_once_; }
+    bool volyre_gpu_dirty() const { return volyre_gpu_dirty_; }
+    uint64_t volyre_last_load_frame() const { return volyre_last_load_frame_; }
+    void VolyreMarkGpuDirty() { volyre_gpu_dirty_ = true; }
+
     void WatchCallback(const std::unique_lock<std::recursive_mutex>& global_lock, bool is_mip);
 
     // For LRU caching - updates the last usage frame and moves the texture to
@@ -262,6 +268,9 @@ class TextureCache {
     Texture* used_next_;
     bool in_usage_list_;
     bool force_load_3d_tiling_ = false;
+    bool volyre_loaded_once_ = false;
+    bool volyre_gpu_dirty_ = false;
+    uint64_t volyre_last_load_frame_ = 0;
 
     // These are to be accessed within the global critical region to synchronize
     // with shared memory.
@@ -614,6 +623,7 @@ class TextureCache {
   // so need to recheck if textures aren't outdated, disregarding whether fetch
   // constants have been changed.
   std::atomic<bool> texture_became_outdated_{false};
+  uint64_t volyre_frame_counter_ = 0;
 
   std::array<TextureBinding, xenos::kTextureFetchConstantCount> texture_bindings_;
   // Bit vector with bits reset on fetch constant writes to avoid parsing fetch

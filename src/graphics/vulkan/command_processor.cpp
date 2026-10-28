@@ -34,6 +34,7 @@
 #include <rex/logging.h>
 #include <rex/math.h>
 #include <rex/graphics/util/draw.h>
+#include <rex/graphics/volyre.h>
 #include <rex/graphics/flags.h>
 #include <rex/graphics/pipeline/shader/shader.h>
 #include <rex/graphics/pipeline/shader/spirv_translator.h>
@@ -2288,6 +2289,7 @@ void VulkanCommandProcessor::OnGammaRampPWLValueWritten() {
 void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontbuffer_width,
                                        uint32_t frontbuffer_height) {
   SCOPE_profile_cpu_f("gpu");
+  volyre::OnFrameSwap();
   struct ScopedSwapCpuTimer {
     GpuTelemetryStats& stats;
     std::chrono::steady_clock::time_point start;
@@ -3925,6 +3927,27 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t 
   }
   reg::RB_DEPTHCONTROL normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);
 
+  // Volyre adaptive load shedding: drop draws that cost GPU time but are not essential.
+  if (volyre::Level()) {
+    volyre::DrawInfo volyre_draw;
+    volyre_draw.index_count = index_count;
+    volyre_draw.is_rect_list = prim_type == xenos::PrimitiveType::kRectangleList;
+    volyre_draw.memexport = memexport_used_vertex || memexport_used_pixel;
+    volyre_draw.kcolor_depth_mode = edram_mode == xenos::EdramMode::kColorDepth;
+    volyre_draw.color_written =
+        pixel_shader && draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets()) != 0;
+    volyre_draw.depth_test = normalized_depth_control.z_enable != 0;
+    volyre_draw.depth_write = normalized_depth_control.z_write_enable != 0;
+    auto volyre_blend = regs.Get<reg::RB_BLENDCONTROL>();
+    volyre_draw.blended = volyre_blend.color_srcblend != xenos::BlendFactor::kOne ||
+                          volyre_blend.color_destblend != xenos::BlendFactor::kZero ||
+                          volyre_blend.alpha_srcblend != xenos::BlendFactor::kOne ||
+                          volyre_blend.alpha_destblend != xenos::BlendFactor::kZero;
+    if (volyre::ShouldSkipDraw(volyre_draw)) {
+      return true;
+    }
+  }
+
   uint32_t ps_param_gen_pos = UINT32_MAX;
   uint32_t interpolator_mask =
       pixel_shader ? (vertex_shader->writes_interpolators() &
@@ -4658,6 +4681,15 @@ bool VulkanCommandProcessor::IssueCopy() {
 #if XE_GPU_FINE_GRAINED_DRAW_SCOPES
   SCOPE_profile_cpu_f("gpu");
 #endif  // XE_GPU_FINE_GRAINED_DRAW_SCOPES
+
+  if (volyre::Level() >= 3) {
+    const auto volyre_copy_control = register_file_->Get<reg::RB_COPY_CONTROL>();
+    if (volyre::ShouldSkipResolve(volyre_copy_control.copy_src_select >= xenos::kMaxColorRenderTargets,
+                                  volyre_copy_control.color_clear_enable ||
+                                      volyre_copy_control.depth_clear_enable)) {
+      return true;
+    }
+  }
 
   ++telemetry_current_frame_.resolves;
   struct ScopedCopyCpuTimer {
