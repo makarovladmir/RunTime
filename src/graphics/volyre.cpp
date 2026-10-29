@@ -28,7 +28,8 @@
 #include <rex/cvar.h>
 #include <rex/logging.h>
 
-REXCVAR_DEFINE_BOOL(volyre_enable, true, "Volyre", "Master switch for the Volyre performance engine");
+REXCVAR_DEFINE_BOOL(volyre_enable, false, "Volyre",
+                    "Master switch for the Volyre load shedding (VOLYRE_V3: off, it drops geometry)");
 REXCVAR_DEFINE_BOOL(volyre_force_msaa_1x, false, "Volyre",
                     "Ignore guest MSAA (render at 1x). Cheaper, but can leave stripes on games that "
                     "tile their EDRAM use around MSAA; preset 3 turns it on");

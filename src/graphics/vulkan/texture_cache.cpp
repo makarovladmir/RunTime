@@ -34,6 +34,8 @@
 #include <rex/ui/vulkan/util.h>
 
 REXCVAR_DEFINE_BOOL(non_seamless_cube_map, false, "GPU", "Use non-seamless cube map sampling");
+REXCVAR_DEFINE_INT32(ac2_texture_mip_bias_pct, 0, "GPU",
+                     "Sampler mip LOD bias in percent of a mip level (100 = medium textures, 0 = off)");
 
 namespace rex::graphics::vulkan {
 
@@ -887,6 +889,12 @@ VkSampler VulkanTextureCache::UseSampler(SamplerParameters parameters, bool& has
                               uint32_t(xenos::AnisoFilter::kMax_1_1)));
   }
   sampler_create_info.minLod = float(parameters.mip_min_level);
+  if (!parameters.mip_base_map) {
+    // Medium textures: sample one mip level lower. Textures without a mip chain are unaffected
+    // (the LOD is clamped to level 0). 200 = 2.0 is the Vulkan guaranteed minimum bias limit.
+    const int32_t ac2_bias_pct = std::clamp<int32_t>(REXCVAR_GET(ac2_texture_mip_bias_pct), 0, 200);
+    sampler_create_info.mipLodBias = float(ac2_bias_pct) * 0.01f;
+  }
   if (parameters.mip_base_map) {
     assert_false(parameters.mip_linear);
     sampler_create_info.maxLod = sampler_create_info.minLod + 0.25f;
