@@ -26,6 +26,7 @@
 #include <rex/graphics/xenos.h>
 #include <rex/logging.h>
 #include <rex/math.h>
+#include <xxhash.h>  // VOLYRE_V4
 
 #if defined(__ANDROID__)
 REXCVAR_DEFINE_INT32(texture_cache_memory_limit_render_to_texture, 96, "GPU",
@@ -318,6 +319,12 @@ void TextureCache::CompletedSubmissionUpdated(uint64_t completed_submission_inde
   }
 }
 
+// VOLYRE_V4: a texture is invalidated whenever the CPU writes ANYTHING to one of its 4 KB pages. Most of the
+// ~500 MB/s of uploads in the 8s Gen 3 log were such false positives (the texture data itself unchanged).
+// Compare a hash of the guest bytes with the one of the last upload and skip the upload when equal.
+REXCVAR_DEFINE_BOOL(ac2_texture_hash_skip, true, "GPU",
+                    "Skip re-uploading an invalidated texture whose guest data is byte-identical (VOLYRE_V4)");
+
 void TextureCache::BeginSubmission(uint64_t new_submission_index) {
   assert_true(new_submission_index > current_submission_index_);
   current_submission_index_ = new_submission_index;
@@ -416,9 +423,44 @@ bool TextureCache::PrepareTextureLoad(Texture& texture, PendingTextureLoad& pend
     }
   }
 
+  // VOLYRE_V4 hash check
+  bool v4_has_base_hash = false, v4_has_mips_hash = false;
+  uint64_t v4_base_hash = 0, v4_mips_hash = 0;
+  if (REXCVAR_GET(ac2_texture_hash_skip) && !texture.key().scaled_resolve && !texture.volyre_gpu_dirty()) {
+    auto hash_range = [&](uint32_t start, uint32_t length, uint64_t& hash_out) -> bool {
+      if (!length || start >= 0x20000000u) return false;
+      length = std::min(length, 0x20000000u - start);
+      const void* host = shared_memory().memory().TranslatePhysical(start);
+      if (!host) return false;
+      hash_out = XXH3_64bits(host, length);
+      return true;
+    };
+    const uint32_t v4_base_size = static_cast<uint32_t>(rex::align(texture.GetGuestBaseSize(), UINT32_C(16)));
+    const uint32_t v4_mips_size = static_cast<uint32_t>(rex::align(texture.GetGuestMipsSize(), UINT32_C(16)));
+    if (texture.volyre_loaded_once() && texture.v4_verified_frame() == volyre_frame_counter_) {
+      return false;  // already verified unchanged in this frame
+    }
+    if (base_outdated) v4_has_base_hash = hash_range(texture.key().base_page << 12, v4_base_size, v4_base_hash);
+    if (mips_outdated) v4_has_mips_hash = hash_range(texture.key().mip_page << 12, v4_mips_size, v4_mips_hash);
+    if (texture.volyre_loaded_once() && (base_outdated || mips_outdated)) {
+      bool unchanged = true;
+      if (base_outdated) unchanged = unchanged && v4_has_base_hash && texture.v4_has_base_hash() && v4_base_hash == texture.v4_base_hash();
+      if (mips_outdated) unchanged = unchanged && v4_has_mips_hash && texture.v4_has_mips_hash() && v4_mips_hash == texture.v4_mips_hash();
+      if (unchanged) {
+        texture.V4SetVerifiedFrame(volyre_frame_counter_);
+        volyre::NoteTextureRefreshDeferred();
+        return false;  // keep the existing host image; the texture stays 'outdated' and is re-verified next frame
+      }
+    }
+  }
+
   pending_load_out.texture = &texture;
   pending_load_out.load_base = base_outdated;
   pending_load_out.load_mips = mips_outdated;
+  pending_load_out.v4_has_base_hash = v4_has_base_hash;
+  pending_load_out.v4_has_mips_hash = v4_has_mips_hash;
+  pending_load_out.v4_base_hash = v4_base_hash;
+  pending_load_out.v4_mips_hash = v4_mips_hash;
   pending_range_count_out = 0;
 
   TextureKey texture_key = texture.key();
@@ -472,6 +514,8 @@ bool TextureCache::CommitPreparedTextureLoad(const PendingTextureLoad& pending_l
   // regular texture or a vertex buffer, and thus the scaled resolve version is
   // not up to date anymore.
   texture.MakeUpToDateAndWatch(global_critical_region_.Acquire());
+  texture.V4SetHashes(pending_load.v4_has_base_hash, pending_load.v4_base_hash, pending_load.v4_has_mips_hash,
+                      pending_load.v4_mips_hash);  // VOLYRE_V4
   volyre::NoteTextureRefreshDone();
   texture.LogAction("Loaded");
 

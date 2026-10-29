@@ -89,6 +89,10 @@ if(REXGLUE_FIDELITYFX_SOURCE_DIR AND EXISTS "${REXGLUE_FIDELITYFX_SOURCE_DIR}/sd
         "${REXGLUE_FIDELITYFX_SOURCE_DIR}/ffx-api/include"
     )
     target_compile_definitions(rexui PRIVATE REX_HAS_FIDELITYFX_SDK=1)
+else()
+    # VOLYRE_V4: the FSR1 (EASU/RCAS) and CAS pixel shaders are precompiled SPIR-V headers in the tree; only the
+    # temporal fsr2/fsr3 path needs the SDK. Enable the spatial path so present_effect = fsr works.
+    target_compile_definitions(rexui PRIVATE REX_HAS_FIDELITYFX_SDK=1)
 endif()
 
 set(REXUI_HAS_FIDELITYFX_RUNTIME OFF)

@@ -230,9 +230,24 @@ class TextureCache {
 
     // Volyre: re-upload throttling of textures whose guest memory the CPU rewrote.
     bool volyre_loaded_once() const { return volyre_loaded_once_; }
+    // VOLYRE_V4: content hashes of the guest data of the last successful load
+    bool v4_has_base_hash() const { return v4_has_base_hash_; }
+    bool v4_has_mips_hash() const { return v4_has_mips_hash_; }
+    uint64_t v4_base_hash() const { return v4_base_hash_; }
+    uint64_t v4_mips_hash() const { return v4_mips_hash_; }
+    uint64_t v4_verified_frame() const { return v4_verified_frame_; }
+    void V4SetVerifiedFrame(uint64_t f) { v4_verified_frame_ = f; }
+    void V4SetHashes(bool has_base, uint64_t base, bool has_mips, uint64_t mips) {
+      if (has_base) { v4_has_base_hash_ = true; v4_base_hash_ = base; }
+      if (has_mips) { v4_has_mips_hash_ = true; v4_mips_hash_ = mips; }
+    }
     bool volyre_gpu_dirty() const { return volyre_gpu_dirty_; }
     uint64_t volyre_last_load_frame() const { return volyre_last_load_frame_; }
-    void VolyreMarkGpuDirty() { volyre_gpu_dirty_ = true; }
+    void VolyreMarkGpuDirty() {
+      volyre_gpu_dirty_ = true;
+      v4_has_base_hash_ = false;
+      v4_has_mips_hash_ = false;
+    }
 
     void WatchCallback(const std::unique_lock<std::recursive_mutex>& global_lock, bool is_mip);
 
@@ -269,6 +284,11 @@ class TextureCache {
     bool in_usage_list_;
     bool force_load_3d_tiling_ = false;
     bool volyre_loaded_once_ = false;
+    bool v4_has_base_hash_ = false;
+    bool v4_has_mips_hash_ = false;
+    uint64_t v4_base_hash_ = 0;
+    uint64_t v4_mips_hash_ = 0;
+    uint64_t v4_verified_frame_ = UINT64_MAX;
     bool volyre_gpu_dirty_ = false;
     uint64_t volyre_last_load_frame_ = 0;
 
@@ -561,6 +581,10 @@ class TextureCache {
     Texture* texture = nullptr;
     bool load_base = false;
     bool load_mips = false;
+    bool v4_has_base_hash = false;
+    bool v4_has_mips_hash = false;
+    uint64_t v4_base_hash = 0;
+    uint64_t v4_mips_hash = 0;
   };
   struct PendingSharedMemoryRange {
     uint32_t start = 0;

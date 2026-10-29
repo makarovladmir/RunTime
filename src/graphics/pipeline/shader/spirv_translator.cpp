@@ -3494,6 +3494,13 @@ spv::Id SpirvShaderTranslator::GetStorageAddressingIndex(
     index = builder_->createBinOp(spv::OpIAdd, type_int_, index,
                                   builder_->makeIntConstant(int(storage_index)));
   }
+  // VOLYRE_V4: a0 + base can leave the constant array (bone palettes). Out-of-range reads return 0 / garbage on
+  // Adreno (robustness2) and collapse skinned vertices onto the origin = hands and fingers stretched to a point.
+  if (is_float_constant && constant_register_map.float_count) {
+    index = builder_->createTriBuiltinCall(
+        type_int_, ext_inst_glsl_std_450_, GLSLstd450SClamp, index, builder_->makeIntConstant(0),
+        builder_->makeIntConstant(int(constant_register_map.float_count) - 1));
+  }
   return index;
 }
 
