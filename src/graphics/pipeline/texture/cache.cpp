@@ -430,7 +430,7 @@ bool TextureCache::PrepareTextureLoad(Texture& texture, PendingTextureLoad& pend
     auto hash_range = [&](uint32_t start, uint32_t length, uint64_t& hash_out) -> bool {
       if (!length || start >= 0x20000000u) return false;
       length = std::min(length, 0x20000000u - start);
-      const void* host = shared_memory().memory().TranslatePhysical(start);
+      const void* host = shared_memory().V4TranslatePhysical(start);
       if (!host) return false;
       hash_out = XXH3_64bits(host, length);
       return true;

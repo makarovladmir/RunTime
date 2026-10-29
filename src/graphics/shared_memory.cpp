@@ -22,6 +22,10 @@
 
 namespace rex::graphics {
 
+const void* SharedMemory::V4TranslatePhysical(uint32_t physical_address) const {  // VOLYRE_V4
+  return memory_.TranslatePhysical(physical_address);
+}
+
 SharedMemory::SharedMemory(memory::Memory& memory) : memory_(memory) {
   page_size_log2_ = rex::log2_ceil(uint32_t(rex::memory::page_size()));
 }

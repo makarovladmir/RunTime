@@ -25,6 +25,7 @@ namespace rex::graphics {
 // system page size granularity.
 class SharedMemory {
  public:
+  const void* V4TranslatePhysical(uint32_t physical_address) const;  // VOLYRE_V4
   static constexpr uint32_t kBufferSizeLog2 = 29;
   static constexpr uint32_t kBufferSize = 1 << kBufferSizeLog2;
 
