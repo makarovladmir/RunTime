@@ -566,6 +566,9 @@ class VulkanCommandProcessor : public CommandProcessor {
     uint64_t draw_rt_cpu_ns = 0;
     uint64_t draw_pipe_cpu_ns = 0;
     uint64_t draw_bind_cpu_ns = 0;
+    uint64_t draw_shader_cpu_ns = 0;   // PERF: EnsureShadersTranslated
+    uint64_t draw_tex_cpu_ns = 0;      // PERF: texture_cache_->RequestTextures (hash + upload)
+    uint64_t draw_shm_cpu_ns = 0;      // PERF: shared_memory_->RequestRange (vertex buffers)
     uint64_t resolve_cpu_ns = 0;
     uint64_t queue_submit_ns = 0;
     uint64_t swap_cpu_ns = 0;

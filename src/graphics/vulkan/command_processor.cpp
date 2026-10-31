@@ -2973,6 +2973,9 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontb
   telemetry_window_.draw_rt_cpu_ns += telemetry_current_frame_.draw_rt_cpu_ns;
   telemetry_window_.draw_pipe_cpu_ns += telemetry_current_frame_.draw_pipe_cpu_ns;
   telemetry_window_.draw_bind_cpu_ns += telemetry_current_frame_.draw_bind_cpu_ns;
+  telemetry_window_.draw_shader_cpu_ns += telemetry_current_frame_.draw_shader_cpu_ns;
+  telemetry_window_.draw_tex_cpu_ns += telemetry_current_frame_.draw_tex_cpu_ns;
+  telemetry_window_.draw_shm_cpu_ns += telemetry_current_frame_.draw_shm_cpu_ns;
   telemetry_window_.rp_barrier += telemetry_current_frame_.rp_barrier;
   telemetry_window_.rp_fb += telemetry_current_frame_.rp_fb;
   telemetry_window_.rp_pass += telemetry_current_frame_.rp_pass;
@@ -3037,6 +3040,21 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontb
           fps, avg_fence_wait_ms, avg_draw_ms, avg_resolve_ms, avg_submit_ms, avg_swap_ms,
           avg_draws, avg_vtx, avg_resolves, avg_passes, avg_binds);
 
+#if defined(__ANDROID__)
+      {
+        uint64_t h_ns = 0, h_bytes = 0, h_calls = 0, uploads = 0, deferred = 0;
+        volyre::TakeProfile(h_ns, h_bytes, h_calls, uploads, deferred);
+        __android_log_print(
+            ANDROID_LOG_INFO, "REX_GPU_PROF",
+            "[GPU_TELEMETRY] Untimed: Shader: %.2fms | Tex: %.2fms (hash %.2fms, %.1fMB/f, %.0f calls/f) | "
+            "Shmem: %.2fms | TexUploads/f: %.1f | Deferred/f: %.1f",
+            ((double)telemetry_window_.draw_shader_cpu_ns / 1e6) / n_frames,
+            ((double)telemetry_window_.draw_tex_cpu_ns / 1e6) / n_frames, ((double)h_ns / 1e6) / n_frames,
+            ((double)h_bytes / 1048576.0) / n_frames, (double)h_calls / n_frames,
+            ((double)telemetry_window_.draw_shm_cpu_ns / 1e6) / n_frames, (double)uploads / n_frames,
+            (double)deferred / n_frames);
+      }
+#endif
       if (pipeline_cache_) {
         pipeline_cache_->SaveHardwarePipelineCache();
       }
@@ -4024,8 +4042,12 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t 
         pixel_shader ? static_cast<VulkanShader::VulkanTranslation*>(
                            pixel_shader->GetOrCreateTranslation(pixel_shader_modification.value))
                      : nullptr;
-    if (!pipeline_cache_->EnsureShadersTranslated(vertex_shader_translation,
-                                                  pixel_shader_translation)) {
+    const auto ac2_sh_t0 = std::chrono::steady_clock::now();
+    const bool ac2_sh_ok =
+        pipeline_cache_->EnsureShadersTranslated(vertex_shader_translation, pixel_shader_translation);
+    telemetry_current_frame_.draw_shader_cpu_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - ac2_sh_t0).count();
+    if (!ac2_sh_ok) {
       return draw_fail("shader_translation");
     }
 
@@ -4106,7 +4128,10 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t 
   uint32_t used_texture_mask =
       vertex_shader->GetUsedTextureMaskAfterTranslation() |
       (pixel_shader != nullptr ? pixel_shader->GetUsedTextureMaskAfterTranslation() : 0);
+  const auto ac2_tx_t0 = std::chrono::steady_clock::now();
   texture_cache_->RequestTextures(used_texture_mask);
+  telemetry_current_frame_.draw_tex_cpu_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now() - ac2_tx_t0).count();
 
   const VulkanPipelineCache::PipelineLayoutProvider* pipeline_layout_provider;
   // Set up the render targets - this may perform dispatches and draws.
@@ -4306,7 +4331,12 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t 
         vertex_buffers_in_sync_[vfetch_index >> 6] |= vfetch_bit;
         continue;
       }
-      if (!shared_memory_->RequestRange(vfetch_constant.address << 2, vfetch_constant.size << 2)) {
+      const auto ac2_sm_t0 = std::chrono::steady_clock::now();
+      const bool ac2_sm_ok =
+          shared_memory_->RequestRange(vfetch_constant.address << 2, vfetch_constant.size << 2);
+      telemetry_current_frame_.draw_shm_cpu_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now() - ac2_sm_t0).count();
+      if (!ac2_sm_ok) {
         REXGPU_ERROR(
             "Failed to request vertex buffer at 0x{:08X} (size {}) in the shared "
             "memory",

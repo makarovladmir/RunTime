@@ -27,6 +27,11 @@ void OnFrameSwap(uint64_t fence_wait_ns);
 void NoteTextureRefreshDeferred();
 void NoteTextureRefreshDone();
 
+// PERF profiling (texture hash cost); TakeProfile() returns and resets the counters.
+void NoteHash(uint64_t ns, uint64_t bytes);
+void TakeProfile(uint64_t& hash_ns, uint64_t& hash_bytes, uint64_t& hash_calls, uint64_t& uploads,
+                 uint64_t& deferred);
+
 struct DrawInfo {
   uint32_t index_count = 0;
   bool is_rect_list = false;   // clears / resolves / full-screen passes are drawn as rect lists

@@ -9,6 +9,7 @@
  * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
  */
 
+#include <chrono>
 #include <algorithm>
 #include <cstdint>
 #include <utility>
@@ -432,7 +433,10 @@ bool TextureCache::PrepareTextureLoad(Texture& texture, PendingTextureLoad& pend
       length = std::min(length, 0x20000000u - start);
       const void* host = shared_memory().V4TranslatePhysical(start);
       if (!host) return false;
+      const auto ac2_h0 = std::chrono::steady_clock::now();
       hash_out = XXH3_64bits(host, length);
+      volyre::NoteHash(uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                    std::chrono::steady_clock::now() - ac2_h0).count()), length);
       return true;
     };
     const uint32_t v4_base_size = static_cast<uint32_t>(rex::align(texture.GetGuestBaseSize(), UINT32_C(16)));

@@ -101,8 +101,29 @@ uint32_t TextureRefreshFrames() {
 
 uint32_t Level() { return g_level.load(std::memory_order_relaxed); }
 
-void NoteTextureRefreshDeferred() { g_deferred_refresh.fetch_add(1, std::memory_order_relaxed); }
-void NoteTextureRefreshDone() { g_done_refresh.fetch_add(1, std::memory_order_relaxed); }
+static std::atomic<uint64_t> g_prof_hash_ns{0}, g_prof_hash_bytes{0}, g_prof_hash_calls{0};
+static std::atomic<uint64_t> g_prof_uploads{0}, g_prof_deferred{0};
+void NoteTextureRefreshDeferred() {
+  g_deferred_refresh.fetch_add(1, std::memory_order_relaxed);
+  g_prof_deferred.fetch_add(1, std::memory_order_relaxed);
+}
+void NoteTextureRefreshDone() {
+  g_done_refresh.fetch_add(1, std::memory_order_relaxed);
+  g_prof_uploads.fetch_add(1, std::memory_order_relaxed);
+}
+void NoteHash(uint64_t ns, uint64_t bytes) {
+  g_prof_hash_ns.fetch_add(ns, std::memory_order_relaxed);
+  g_prof_hash_bytes.fetch_add(bytes, std::memory_order_relaxed);
+  g_prof_hash_calls.fetch_add(1, std::memory_order_relaxed);
+}
+void TakeProfile(uint64_t& hash_ns, uint64_t& hash_bytes, uint64_t& hash_calls, uint64_t& uploads,
+                 uint64_t& deferred) {
+  hash_ns = g_prof_hash_ns.exchange(0);
+  hash_bytes = g_prof_hash_bytes.exchange(0);
+  hash_calls = g_prof_hash_calls.exchange(0);
+  uploads = g_prof_uploads.exchange(0);
+  deferred = g_prof_deferred.exchange(0);
+}
 
 void OnFrameSwap(uint64_t fence_wait_ns) {
   if (!REXCVAR_GET(volyre_enable)) {
